@@ -4,18 +4,23 @@ ArgumentLetters='ACVEL'
 def usage ():	print "Usage:\n\t%s key_db_file %s [service] [username]" % (sys.argv[0], '|'.join(ArgumentLetters))
 def xor(s1, s2): s2=s2*((len(s1) / 512) + 1) ; return ''.join(chr(ord(a) ^ ord(b)) for a,b in zip(s1,s2))
 def get_inputs( messages ): return [raw_input(messages[i]) for i in range(len(messages))]
+def get_passwds():
+	master_pass = getpass.getpass("*** Master Password*** :")
+	return (hashlib.sha512( master_pass ).hexdigest(), hashlib.sha1( master_pass ).hexdigest())
 if len(sys.argv) < 3 : usage(); sys.exit(-1);
 def open_key_db() : 
 	try :
-		encr_key_db = open( sys.argv[1], 'r' ).read().decode('base64')
-		passwd = hashlib.sha512( getpass.getpass("*** Master Password*** :") ).hexdigest()
-	except : return dict(); 
-	return dict([( line.split(':',2)[0], (line.split(':',2)[1], line.split(':',2)[2])) for line in xor( encr_key_db, passwd ).splitlines() ])
+		encr_key_db_file = open( sys.argv[1], 'r' ).read().decode('base64')
+		passwd_512, passwd_160 = get_passwds()
+		encr_key_db, hard_passwd_160 = encr_key_db_file.split('#')[0],  encr_key_db_file.split('#')[1]
+		assert hard_passwd_160 == passwd_160, "Bad Master Password"
+	except : return dict();
+	return dict([( line.split(':',2)[0], (line.split(':',2)[1], line.split(':',2)[2])) for line in xor( encr_key_db, passwd_512 ).splitlines() ])
 KeyDB = open_key_db()
 def save_key_db() :
-	passwd = hashlib.sha512( getpass.getpass("*** Master Password*** :") ).hexdigest()
 	key_db_file = open( sys.argv[1], 'w' )
-	key_db_file.write( xor( '\n'.join(["%s:%s:%s"%(k,v[0],v[1]) for k,v in KeyDB.iteritems()]), passwd ).encode('base64') )
+	passwd_512, passwd_160 = get_passwds()
+	key_db_file.write( (xor( '\n'.join(["%s:%s:%s"%(k,v[0],v[1]) for k,v in KeyDB.iteritems()]), passwd_512 )+'#'+passwd_160).encode('base64') )
 def addKey() :
 	inputs = get_inputs( ["Service: ", "Username: ", "Password: ", "Retype Password: "] )
 	if inputs[2] == inputs[3] : KeyDB[inputs[0]] = (inputs[1], inputs[2])
